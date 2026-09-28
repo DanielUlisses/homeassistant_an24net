@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 from collections.abc import Callable
 from enum import Enum
 from typing import TypedDict
@@ -38,6 +39,8 @@ SYNC_EMPTY = 0xF0
 # Sync response marker
 SYNC_MARKER = 0xE0
 
+_LOGGER = logging.getLogger(__name__)
+
 # Connection data constants
 ETHERNET = 0x45
 TYPE_ANDROID = 0x06
@@ -53,8 +56,25 @@ ERR_WRONG_PASSWORD = 0xE1
 ERR_OPEN_ZONE = 0xE4
 
 
-def arm(*, stay: bool) -> bytes:
-    return b"\x41\x50" if stay else b"\x41"
+# Stay (armed_home) encodings. The APK constants are ARM=0x41, PARTITION_A=0x41,
+# PARTITION_B=0x42 and a STAY modifier 0x50 appended after the partition byte.
+# The original integration sent 0x41 0x50 (no partition byte), which some
+# AN-24 Net firmwares treat as a full arm, so the panel ends up armed_away.
+STAY_PARTITION_A = "partition_a_stay"  # 0x41 0x41 0x50 (APK: arm A + stay)
+STAY_PARTITION_B = "partition_b"  # 0x41 0x42 (arm partition B, used by G2)
+STAY_LEGACY = "legacy"  # 0x41 0x50 (original upstream behaviour)
+STAY_VARIANTS: dict[str, bytes] = {
+    STAY_PARTITION_A: b"\x41\x41\x50",
+    STAY_PARTITION_B: b"\x41\x42",
+    STAY_LEGACY: b"\x41\x50",
+}
+DEFAULT_STAY_VARIANT = STAY_PARTITION_A
+
+
+def arm(*, stay: bool, stay_variant: str = DEFAULT_STAY_VARIANT) -> bytes:
+    if stay:
+        return STAY_VARIANTS.get(stay_variant, STAY_VARIANTS[DEFAULT_STAY_VARIANT])
+    return b"\x41"
 
 
 def panic(*, audible: bool) -> bytes:
@@ -152,10 +172,8 @@ def my_home_to_str(data: bytes) -> str:
     if data[0] == DELIMITER and data[-1] == DELIMITER:
         command = data[5]
         data = data[6:-1]
-        if command == MyHomeCommands.ARM.code and data == MyHomeCommands.ARM.factory(
-            stay=True
-        ):
-            cmd_str = "ARM_STAY"
+        if command == MyHomeCommands.ARM.code and data in STAY_VARIANTS.values():
+            cmd_str = f"ARM_STAY ({data.hex(':')})"
         elif command == MyHomeCommands.ARM.code:
             cmd_str = "ARM"
         elif command == MyHomeCommands.DISARM.code:
@@ -478,6 +496,7 @@ CID_EVENT_TYPES: dict[tuple[int, int], str] = {
     (3, 384): "battery_restore",
     (1, 401): "disarm",
     (3, 401): "arm",
+    (3, 441): "arm_stay",
     (1, 422): "pgm_activate",
     (3, 422): "pgm_deactivate",
 }
@@ -628,8 +647,16 @@ class WrongPasswordError(Exception): ...
 
 
 class ClientAMT:
-    def __init__(self, host: str, port: int, mac: str, pin: str) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        mac: str,
+        pin: str,
+        stay_variant: str = DEFAULT_STAY_VARIANT,
+    ) -> None:
         self.host = host
+        self.stay_variant = stay_variant
         self.port = port
         self.mac = bytes.fromhex(mac.replace(":", ""))
         self.pin = pin
@@ -731,12 +758,17 @@ class ClientAMT:
                 self._receive.remove(queue)
 
     async def arm(self, password: str, *, stay: bool = False) -> None:
+        inner = MyHomeCommands.ARM.factory(stay=stay, stay_variant=self.stay_variant)
+        _LOGGER.debug(
+            "Sending %s: inner=%s",
+            f"ARM_STAY[{self.stay_variant}]" if stay else "ARM",
+            bytes([MyHomeCommands.ARM.code, *inner]).hex(":"),
+        )
         data = await self._request(
             MY_HOME,
-            my_home_data(
-                password, MyHomeCommands.ARM.code, MyHomeCommands.ARM.factory(stay=stay)
-            ),
+            my_home_data(password, MyHomeCommands.ARM.code, inner),
         )
+        _LOGGER.debug("ARM response: %s", data.hex(":"))
         if data == bytes([ERR_WRONG_PASSWORD]):
             raise WrongPasswordError
         if data == bytes([ERR_OPEN_ZONE]):

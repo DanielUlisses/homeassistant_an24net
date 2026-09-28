@@ -36,7 +36,11 @@
         "step": {
             "init": {
                 "data": {
-                    "require_code": "Exigir código PIN"
+                    "require_code": "Exigir código PIN",
+                    "stay_variant": "Comando de armar em casa (stay)"
+                },
+                "data_description": {
+                    "stay_variant": "Muda os bytes enviados em Armar em casa. Teste outra opção se Armar em casa acabar como Armado ausente."
                 }
             }
         }
@@ -105,6 +109,15 @@
         },
         "not_proxied": {
             "message": "Não conectado através do proxy"
+        }
+    },
+    "selector": {
+        "stay_variant": {
+            "options": {
+                "partition_a_stay": "Partição A + stay (41 41 50) — padrão",
+                "partition_b": "Partição B (41 42)",
+                "legacy": "Legado (41 50) — comportamento original"
+            }
         }
     }
 }

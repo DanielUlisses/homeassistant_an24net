@@ -7,8 +7,9 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
+from .config_flow import CONF_STAY_VARIANT
 from .coordinator import AMTCoordinator
-from .protocol import ClientAMT
+from .protocol import DEFAULT_STAY_VARIANT, ClientAMT
 
 PLATFORMS: list[Platform] = [
     Platform.ALARM_CONTROL_PANEL,
@@ -27,6 +28,7 @@ async def async_setup_entry(
         entry.data["port"],
         entry.data["mac"],
         entry.data["pin"],
+        entry.options.get(CONF_STAY_VARIANT, DEFAULT_STAY_VARIANT),
     )
     entry.async_create_background_task(hass, client.run(), "client.run")
 

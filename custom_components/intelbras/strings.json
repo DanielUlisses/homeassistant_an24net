@@ -36,7 +36,11 @@
     "step": {
       "init": {
         "data": {
-          "require_code": "Require PIN code"
+          "require_code": "Require PIN code",
+          "stay_variant": "Arm home (stay) command"
+        },
+        "data_description": {
+          "stay_variant": "Changes the bytes sent for Arm Home. Try another option if Arm Home ends up as Armed Away."
         }
       }
     }
@@ -105,6 +109,15 @@
     },
     "not_proxied": {
       "message": "Not connected through proxy"
+    }
+  },
+  "selector": {
+    "stay_variant": {
+      "options": {
+        "partition_a_stay": "Partition A + stay (41 41 50) — default",
+        "partition_b": "Partition B (41 42)",
+        "legacy": "Legacy (41 50) — original behaviour"
+      }
     }
   }
 }

@@ -18,13 +18,25 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_HOST, CONF_MAC, CONF_PIN, CONF_PORT
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import format_mac
+from homeassistant.helpers.selector import (
+    SelectSelector,  # pyright: ignore[reportUnknownVariableType]
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .const import DOMAIN
-from .protocol import SYNC_NAME, ClientAMT, WrongPasswordError
+from .protocol import (
+    DEFAULT_STAY_VARIANT,
+    STAY_VARIANTS,
+    SYNC_NAME,
+    ClientAMT,
+    WrongPasswordError,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 CONF_REQUIRE_CODE = "require_code"
+CONF_STAY_VARIANT = "stay_variant"
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -177,6 +189,18 @@ class AN24NetOptionsFlow(OptionsFlowWithReload):
                         CONF_REQUIRE_CODE,
                         default=self.config_entry.options.get(CONF_REQUIRE_CODE, True),
                     ): bool,
+                    vol.Required(
+                        CONF_STAY_VARIANT,
+                        default=self.config_entry.options.get(
+                            CONF_STAY_VARIANT, DEFAULT_STAY_VARIANT
+                        ),
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=list(STAY_VARIANTS),
+                            mode=SelectSelectorMode.DROPDOWN,
+                            translation_key=CONF_STAY_VARIANT,
+                        )
+                    ),
                 }
             ),
         )
