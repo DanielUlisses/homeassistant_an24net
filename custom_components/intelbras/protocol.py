@@ -56,19 +56,19 @@ ERR_WRONG_PASSWORD = 0xE1
 ERR_OPEN_ZONE = 0xE4
 
 
-# Stay (armed_home) encodings. The APK constants are ARM=0x41, PARTITION_A=0x41,
-# PARTITION_B=0x42 and a STAY modifier 0x50 appended after the partition byte.
-# The original integration sent 0x41 0x50 (no partition byte), which some
-# AN-24 Net firmwares treat as a full arm, so the panel ends up armed_away.
+# Stay (armed_home) encodings. Captured from the official app on an ANM 24 Net
+# G2: partial arm is "arm partition B" (0x41 0x42) and the panel reports it as
+# only partition B armed. The documented stay modifier (0x41 [0x41] 0x50) is
+# accepted but performs a full arm on this panel.
+STAY_PARTITION_B = "partition_b"  # 0x41 0x42 (what the official app sends)
 STAY_PARTITION_A = "partition_a_stay"  # 0x41 0x41 0x50 (APK: arm A + stay)
-STAY_PARTITION_B = "partition_b"  # 0x41 0x42 (arm partition B, used by G2)
 STAY_LEGACY = "legacy"  # 0x41 0x50 (original upstream behaviour)
 STAY_VARIANTS: dict[str, bytes] = {
-    STAY_PARTITION_A: b"\x41\x41\x50",
     STAY_PARTITION_B: b"\x41\x42",
+    STAY_PARTITION_A: b"\x41\x41\x50",
     STAY_LEGACY: b"\x41\x50",
 }
-DEFAULT_STAY_VARIANT = STAY_PARTITION_A
+DEFAULT_STAY_VARIANT = STAY_PARTITION_B
 
 
 def arm(*, stay: bool, stay_variant: str = DEFAULT_STAY_VARIANT) -> bytes:

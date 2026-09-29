@@ -82,6 +82,24 @@ always target partition A explicitly. A stay modifier (0x50) changes full arm to
 | `0x5A` | STATUS | Request status (54 bytes response) |
 | `0x00` + payload | MESSAGES | Sync/event data (see below) |
 
+#### Partial (stay) arm — captured from the official app (ANM 24 Net G2)
+
+Traffic of the Intelbras app captured through the proxy's relay:
+
+```
+→ 09 e9 21 ** ** ** ** 41 42 21 17   ARM partition B   → 02 e9 fe ea (OK)
+  STATUS byte 21 = 0x02 (only partition B)             → armed stay
+→ 09 e9 21 ** ** ** ** 44 41 21 11   DISARM partition A → 02 e9 fe ea (OK)
+```
+
+- Partial arm is **ARM partition B (`0x41 0x42`)**. The documented stay modifier
+  (`0x41 0x50` / `0x41 0x41 0x50`) is accepted but arms fully on this panel.
+- The panel's event log records partial arm as Contact ID **3456** (full arm 3401,
+  disarm 1401, each paired with PGM 1422/3422 when the PGM mirrors arming).
+- The app connects to `amt.intelbras.com.br:9015`, not 9009: `XOR` → key (e.g.
+  `a1`) → 20-byte encrypted connection frame → `e6 31 2e 30` (E6 + "1.0"). The
+  MY_HOME frames after the handshake are the same as on 9009.
+
 #### Arm state semantics
 
 The panel uses partition flags to encode arm mode (not actual partition separation):
