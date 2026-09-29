@@ -71,12 +71,24 @@ UPSTREAM_PORT = int(os.environ.get("UPSTREAM_PORT", "9009"))
 PASSTHROUGH = os.environ.get("PASSTHROUGH", "1") not in ("0", "false", "no")
 
 
-async def open_upstream(logger: logging.Logger) -> tuple[StreamReader, StreamWriter]:
-    """Connect to the real Intelbras cloud, refusing to connect to ourselves."""
-    u_reader, u_writer = await asyncio.open_connection(
-        host=UPSTREAM_HOST,
-        port=UPSTREAM_PORT,
+# Extra ports relayed byte-for-byte to the same port on the real cloud, e.g.
+# "9015" or "9015,9010:9009" (listen:upstream). The official app may use
+# ports other than 9009 (9015 is the legacy ISECNet V1 endpoint).
+RELAY_PORTS: list[tuple[int, int]] = [
+    (int(a), int(b or a))
+    for a, _, b in (
+        entry.strip().partition(":")
+        for entry in os.environ.get("RELAY_PORTS", "9015").split(",")
+        if entry.strip()
     )
+]
+
+
+async def open_upstream(
+    logger: logging.Logger, port: int = UPSTREAM_PORT
+) -> tuple[StreamReader, StreamWriter]:
+    """Connect to the real Intelbras cloud, refusing to connect to ourselves."""
+    u_reader, u_writer = await asyncio.open_connection(host=UPSTREAM_HOST, port=port)
     upstream_ip = u_writer.get_extra_info("peername")[0]
     local_ips = {u_writer.get_extra_info("sockname")[0], "127.0.0.1", "::1"}
     if upstream_ip in local_ips:
@@ -85,7 +97,7 @@ async def open_upstream(logger: logging.Logger) -> tuple[StreamReader, StreamWri
             f"{UPSTREAM_HOST} resolved to this proxy ({upstream_ip}); "
             "the proxy host must not use the DNS override"
         )
-    logger.info(f"connected to {UPSTREAM_HOST}:{UPSTREAM_PORT} ({upstream_ip})")
+    logger.info(f"connected to {UPSTREAM_HOST}:{port} ({upstream_ip})")
     return u_reader, u_writer
 
 
@@ -127,6 +139,32 @@ def describe_chunk(chunk: bytes) -> str:
         parts.append(f"{desc} | {frame.hex(':')}")
         i = end
     return " || ".join(parts)
+
+
+async def pipe(
+    logger: logging.Logger, src: StreamReader, dst: StreamWriter, arrow: str
+) -> None:
+    """Copy bytes src→dst unchanged, logging each chunk (passwords masked)."""
+    while chunk := await src.read(4096):
+        logger.info(f"{arrow} {describe_chunk(chunk)}")
+        dst.write(chunk)
+        await dst.drain()
+    raise ConnectionError(f"{arrow} side closed")
+
+
+async def relay(
+    logger: logging.Logger, reader: StreamReader, writer: StreamWriter, port: int
+) -> None:
+    """Transparent TCP relay of a client to the real cloud on `port`."""
+    peer = writer.get_extra_info("peername")
+    logger.info(f"new relay connection from {peer[0] if peer else '?'}")
+    u_reader, u_writer = await open_upstream(logger, port)
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(pipe(logger, reader, u_writer, "app→cloud ↓"))
+            tg.create_task(pipe(logger, u_reader, writer, "cloud→app ↑"))
+    finally:
+        u_writer.close()
 
 
 # The panel pings every ~60s; drop the connection if it goes silent for longer.
@@ -174,18 +212,9 @@ async def handle(
                 if result[0] != CONN_SUCCESS:
                     return
 
-                async def pipe(
-                    src: StreamReader, dst: StreamWriter, arrow: str
-                ) -> None:
-                    while chunk := await src.read(4096):
-                        logger.info(f"{arrow} {describe_chunk(chunk)}")
-                        dst.write(chunk)
-                        await dst.drain()
-                    raise ConnectionError(f"{arrow} side closed")
-
                 async with asyncio.TaskGroup() as ptg:
-                    ptg.create_task(pipe(reader, u_writer, "app→cloud ↓"))
-                    ptg.create_task(pipe(u_reader, writer, "cloud→app ↑"))
+                    ptg.create_task(pipe(logger, reader, u_writer, "app→cloud ↓"))
+                    ptg.create_task(pipe(logger, u_reader, writer, "cloud→app ↑"))
             finally:
                 u_writer.close()
 
@@ -486,9 +515,44 @@ async def main() -> None:
             if task:
                 tasks.discard(task)
 
+    def relay_handler(listen: int, upstream: int):
+        async def _handler(reader: StreamReader, writer: StreamWriter) -> None:
+            task = asyncio.current_task()
+            if task:
+                tasks.add(task)
+            conn_logger = logger.getChild(f"relay{listen}.conn{next(_conn_ids)}")
+            try:
+                await relay(conn_logger, reader, writer, upstream)
+            except* (
+                asyncio.IncompleteReadError,
+                ConnectionResetError,
+                BrokenPipeError,
+                ConnectionError,
+            ):
+                conn_logger.info("connection closed")
+            except* Exception:
+                conn_logger.exception("relay error")
+            finally:
+                writer.close()
+                if task:
+                    tasks.discard(task)
+
+        return _handler
+
+    servers = []
+    for listen, upstream in RELAY_PORTS:
+        logger.info(f"Relaying 0.0.0.0:{listen} → {UPSTREAM_HOST}:{upstream}")
+        servers.append(
+            await asyncio.start_server(
+                relay_handler(listen, upstream), "0.0.0.0", listen
+            )
+        )
+
     logger.info("Serving on 0.0.0.0:9009")
     server = await asyncio.start_server(handler, "0.0.0.0", 9009)
-    await server.serve_forever()
+    await asyncio.gather(
+        server.serve_forever(), *(srv.serve_forever() for srv in servers)
+    )
 
 
 def run() -> None:
