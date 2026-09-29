@@ -56,22 +56,24 @@ ERR_WRONG_PASSWORD = 0xE1
 ERR_OPEN_ZONE = 0xE4
 
 
-# Stay (armed_home) encodings. Captured from the official app on an ANM 24 Net
-# G2: partial arm is "arm partition B" (0x41 0x42) and the panel reports it as
-# only partition B armed. The documented stay modifier (0x41 [0x41] 0x50) is
-# accepted but performs a full arm on this panel.
-STAY_PARTITION_B = "partition_b"  # 0x41 0x42 (what the official app sends)
-STAY_PARTITION_A = "partition_a_stay"  # 0x41 0x41 0x50 (APK: arm A + stay)
-STAY_LEGACY = "legacy"  # 0x41 0x50 (original upstream behaviour)
+# Stay (armed_home) encodings: the bytes that follow the ARM command byte
+# (0x41), which my_home_data() already adds. Captured from the official app on
+# an ANM 24 Net G2, partial arm is "ARM partition B" = 41 42 on the wire, and
+# the panel then reports only partition B armed. The upstream encoding
+# (41 41 50, arm A + stay modifier) is accepted but arms fully on this panel.
+STAY_PARTITION_B = "partition_b"  # wire 41 42 (what the official app sends)
+STAY_LEGACY = "legacy"  # wire 41 41 50 (original upstream behaviour)
+STAY_ONLY = "stay_only"  # wire 41 50 (documented "whole central stay")
 STAY_VARIANTS: dict[str, bytes] = {
-    STAY_PARTITION_B: b"\x41\x42",
-    STAY_PARTITION_A: b"\x41\x41\x50",
+    STAY_PARTITION_B: b"\x42",
     STAY_LEGACY: b"\x41\x50",
+    STAY_ONLY: b"\x50",
 }
 DEFAULT_STAY_VARIANT = STAY_PARTITION_B
 
 
 def arm(*, stay: bool, stay_variant: str = DEFAULT_STAY_VARIANT) -> bytes:
+    """Bytes after the ARM command byte. Full arm is partition A (wire 41 41)."""
     if stay:
         return STAY_VARIANTS.get(stay_variant, STAY_VARIANTS[DEFAULT_STAY_VARIANT])
     return b"\x41"
@@ -173,7 +175,7 @@ def my_home_to_str(data: bytes) -> str:
         command = data[5]
         data = data[6:-1]
         if command == MyHomeCommands.ARM.code and data in STAY_VARIANTS.values():
-            cmd_str = f"ARM_STAY ({data.hex(':')})"
+            cmd_str = f"ARM_STAY ({bytes([command, *data]).hex(':')})"
         elif command == MyHomeCommands.ARM.code:
             cmd_str = "ARM"
         elif command == MyHomeCommands.DISARM.code:

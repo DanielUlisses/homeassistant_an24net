@@ -115,8 +115,8 @@
     "stay_variant": {
       "options": {
         "partition_b": "Partition B (41 42) — default, same as the Intelbras app",
-        "partition_a_stay": "Partition A + stay (41 41 50)",
-        "legacy": "Legacy (41 50) — original behaviour"
+        "legacy": "Partition A + stay (41 41 50) — original behaviour",
+        "stay_only": "Stay only (41 50)"
       }
     }
   }

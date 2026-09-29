@@ -191,8 +191,11 @@ class AN24NetOptionsFlow(OptionsFlowWithReload):
                     ): bool,
                     vol.Required(
                         CONF_STAY_VARIANT,
-                        default=self.config_entry.options.get(
-                            CONF_STAY_VARIANT, DEFAULT_STAY_VARIANT
+                        default=(
+                            v
+                            if (v := self.config_entry.options.get(CONF_STAY_VARIANT))
+                            in STAY_VARIANTS
+                            else DEFAULT_STAY_VARIANT
                         ),
                     ): SelectSelector(
                         SelectSelectorConfig(

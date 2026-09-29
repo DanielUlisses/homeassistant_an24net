@@ -92,8 +92,9 @@ Traffic of the Intelbras app captured through the proxy's relay:
 → 09 e9 21 ** ** ** ** 44 41 21 11   DISARM partition A → 02 e9 fe ea (OK)
 ```
 
-- Partial arm is **ARM partition B (`0x41 0x42`)**. The documented stay modifier
-  (`0x41 0x50` / `0x41 0x41 0x50`) is accepted but arms fully on this panel.
+- Partial arm is **ARM partition B (`0x41 0x42`)**. The upstream stay encoding
+  `0x41 0x41 0x50` (and `0x41 0x41 0x42`) is accepted but arms fully on this
+  panel. (`0x41 0x50` alone has not been tested.)
 - The panel's event log records partial arm as Contact ID **3456** (full arm 3401,
   disarm 1401, each paired with PGM 1422/3422 when the PGM mirrors arming).
 - The app connects to `amt.intelbras.com.br:9015`, not 9009: `XOR` → key (e.g.
