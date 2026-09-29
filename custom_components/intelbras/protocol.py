@@ -657,6 +657,7 @@ class ClientAMT:
     ) -> None:
         self.host = host
         self.stay_variant = stay_variant
+        self._last_status_raw = b""
         self.port = port
         self.mac = bytes.fromhex(mac.replace(":", ""))
         self.pin = pin
@@ -676,8 +677,14 @@ class ClientAMT:
                 # drop). Raise so the TaskGroup exits and we reconnect.
                 async with asyncio.timeout(READ_IDLE_TIMEOUT):
                     command, data = await read_command(reader)
-                if command == PUSH_COMMAND and self.on_push is not None:
-                    self.on_push(data)
+                if command == PUSH_COMMAND:
+                    _LOGGER.debug(
+                        "PUSH received: %s | raw=%s",
+                        push_event_to_str(data),
+                        data.hex(":"),
+                    )
+                    if self.on_push is not None:
+                        self.on_push(data)
                 for queue in self._receive:
                     with contextlib.suppress(asyncio.QueueFull):
                         queue.put_nowait((command, data))
@@ -781,6 +788,7 @@ class ClientAMT:
                 password, MyHomeCommands.DISARM.code, MyHomeCommands.DISARM.factory()
             ),
         )
+        _LOGGER.debug("DISARM response: %s", data.hex(":"))
         if data == bytes([ERR_WRONG_PASSWORD]):
             raise WrongPasswordError
 
@@ -836,6 +844,15 @@ class ClientAMT:
             ),
         )
         status = parse_status(data)
+        if data != self._last_status_raw:
+            self._last_status_raw = data
+            _LOGGER.debug(
+                "STATUS changed: %s | flags[20]=%02x flags[21]=%02x | raw=%s",
+                status_to_str(status),
+                data[20],
+                data[21],
+                data.hex(":"),
+            )
         if self.is_proxy:
             status["upstream_push"] = bool(data[-1])
         return status
