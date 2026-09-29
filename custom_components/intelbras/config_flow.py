@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -35,8 +36,30 @@ from .protocol import (
 
 _LOGGER = logging.getLogger(__name__)
 
-CONF_REQUIRE_CODE = "require_code"
+CONF_REQUIRE_CODE = "require_code"  # legacy boolean, superseded by CONF_CODE_MODE
+CONF_CODE_MODE = "code_mode"
 CONF_STAY_VARIANT = "stay_variant"
+CODE_MODE_DISARM = "disarm"
+CODE_MODE_ARM_DISARM = "arm_disarm"
+CODE_MODE_NONE = "none"
+
+CODE_MODE_SELECTOR = SelectSelector(  # pyright: ignore[reportUnknownVariableType]
+    SelectSelectorConfig(
+        options=[CODE_MODE_DISARM, CODE_MODE_ARM_DISARM, CODE_MODE_NONE],
+        mode=SelectSelectorMode.LIST,
+        translation_key=CONF_CODE_MODE,
+    )
+)
+
+
+def get_code_mode(options: Mapping[str, Any]) -> str:
+    """Return the code mode, mapping the legacy require_code option."""
+    if CONF_CODE_MODE in options:
+        return options[CONF_CODE_MODE]
+    if CONF_REQUIRE_CODE in options:
+        return CODE_MODE_ARM_DISARM if options[CONF_REQUIRE_CODE] else CODE_MODE_NONE
+    return CODE_MODE_DISARM
+
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -53,7 +76,7 @@ STEP_RECONFIGURE_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_HOST): str,
         vol.Required(CONF_PORT): int,
         vol.Required(CONF_PIN): str,
-        vol.Required(CONF_REQUIRE_CODE): bool,
+        vol.Required(CONF_CODE_MODE): CODE_MODE_SELECTOR,
     }
 )
 
@@ -128,7 +151,9 @@ class AN24NetConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="options",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_REQUIRE_CODE, default=True): bool,
+                    vol.Required(
+                        CONF_CODE_MODE, default=CODE_MODE_DISARM
+                    ): CODE_MODE_SELECTOR,
                 }
             ),
         )
@@ -149,7 +174,10 @@ class AN24NetConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
-                options = {CONF_REQUIRE_CODE: user_input.pop(CONF_REQUIRE_CODE)}
+                options = {
+                    **entry.options,
+                    CONF_CODE_MODE: user_input.pop(CONF_CODE_MODE),
+                }
                 return self.async_update_reload_and_abort(
                     entry,
                     data={**entry.data, **user_input},
@@ -164,7 +192,7 @@ class AN24NetConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_HOST: entry.data[CONF_HOST],
                     CONF_PORT: entry.data[CONF_PORT],
                     CONF_PIN: entry.data[CONF_PIN],
-                    CONF_REQUIRE_CODE: entry.options.get(CONF_REQUIRE_CODE, True),
+                    CONF_CODE_MODE: get_code_mode(entry.options),
                 },
             ),
             errors=errors,
@@ -186,9 +214,9 @@ class AN24NetOptionsFlow(OptionsFlowWithReload):
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_REQUIRE_CODE,
-                        default=self.config_entry.options.get(CONF_REQUIRE_CODE, True),
-                    ): bool,
+                        CONF_CODE_MODE,
+                        default=get_code_mode(self.config_entry.options),
+                    ): CODE_MODE_SELECTOR,
                     vol.Required(
                         CONF_STAY_VARIANT,
                         default=(

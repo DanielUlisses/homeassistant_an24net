@@ -19,7 +19,7 @@
             },
             "options": {
                 "data": {
-                    "require_code": "Require PIN code"
+                    "code_mode": "PIN code"
                 }
             },
             "reconfigure": {
@@ -27,7 +27,7 @@
                     "host": "Host",
                     "pin": "PIN code",
                     "port": "Port",
-                    "require_code": "Require PIN code"
+                    "code_mode": "PIN code"
                 }
             }
         }
@@ -36,7 +36,7 @@
         "step": {
             "init": {
                 "data": {
-                    "require_code": "Require PIN code",
+                    "code_mode": "PIN code",
                     "stay_variant": "Arm home (stay) command"
                 },
                 "data_description": {
@@ -107,11 +107,21 @@
         "wrong_password": {
             "message": "Wrong password"
         },
+        "code_required": {
+            "message": "PIN code is required"
+        },
         "not_proxied": {
             "message": "Not connected through proxy"
         }
     },
     "selector": {
+        "code_mode": {
+            "options": {
+                "disarm": "PIN only to disarm (default)",
+                "arm_disarm": "PIN to arm and disarm",
+                "none": "Never ask for PIN"
+            }
+        },
         "stay_variant": {
             "options": {
                 "partition_b": "Partition B (41 42) — default, same as the Intelbras app",

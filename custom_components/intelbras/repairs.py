@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PIN
 from homeassistant.core import HomeAssistant
 
-from .config_flow import CONF_REQUIRE_CODE
+from .config_flow import CODE_MODE_NONE, get_code_mode
 from .const import DOMAIN
 from .coordinator import AMTCoordinator
 from .protocol import WrongPasswordError
@@ -30,7 +30,7 @@ class BurglaryRepairFlow(RepairsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> RepairsFlowResult:
         """Handle the disarm step."""
-        if not self._config_entry.options.get(CONF_REQUIRE_CODE, True):
+        if get_code_mode(self._config_entry.options) == CODE_MODE_NONE:
             try:
                 await self._coordinator.client.disarm(self._config_entry.data[CONF_PIN])
                 return self.async_create_entry(data={})
