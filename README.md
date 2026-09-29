@@ -46,9 +46,9 @@ You will need:
 
 After setup, you can configure additional options via **Settings** > **Devices & Services** > **Alarme Intelbras** > **Configure**:
 
-| Option      | Description |
-|-------------|-------------|
-| Require PIN | When enabled, the PIN must be entered in the UI to arm/disarm. When disabled, the stored PIN is used automatically (default: enabled) |
+| Option   | Description |
+|----------|-------------|
+| PIN code | When the PIN must be entered in the UI: **PIN only to disarm** (default; arming and panic use the stored PIN), **PIN to arm and disarm**, or **Never ask for PIN** (the stored PIN is always used) |
 
 ## Proxy Server (optional)
 

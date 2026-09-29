@@ -19,7 +19,7 @@
             },
             "options": {
                 "data": {
-                    "require_code": "Exigir código PIN"
+                    "code_mode": "Código PIN"
                 }
             },
             "reconfigure": {
@@ -27,7 +27,7 @@
                     "host": "Host",
                     "pin": "Código PIN",
                     "port": "Porta",
-                    "require_code": "Exigir código PIN"
+                    "code_mode": "Código PIN"
                 }
             }
         }
@@ -36,8 +36,17 @@
         "step": {
             "init": {
                 "data": {
-                    "require_code": "Exigir código PIN"
+                    "code_mode": "Código PIN"
                 }
+            }
+        }
+    },
+    "selector": {
+        "code_mode": {
+            "options": {
+                "disarm": "PIN só para desarmar (padrão)",
+                "arm_disarm": "PIN para armar e desarmar",
+                "none": "Nunca pedir PIN"
             }
         }
     },
@@ -102,6 +111,9 @@
         },
         "wrong_password": {
             "message": "Senha incorreta"
+        },
+        "code_required": {
+            "message": "Código PIN obrigatório"
         },
         "not_proxied": {
             "message": "Não conectado através do proxy"

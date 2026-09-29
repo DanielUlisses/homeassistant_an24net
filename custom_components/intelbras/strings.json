@@ -11,7 +11,7 @@
       },
       "options": {
         "data": {
-          "require_code": "Require PIN code"
+          "code_mode": "PIN code"
         }
       },
       "reconfigure": {
@@ -19,7 +19,7 @@
           "host": "[%key:common::config_flow::data::host%]",
           "port": "[%key:common::config_flow::data::port%]",
           "pin": "[%key:common::config_flow::data::pin%]",
-          "require_code": "Require PIN code"
+          "code_mode": "PIN code"
         }
       }
     },
@@ -36,8 +36,17 @@
     "step": {
       "init": {
         "data": {
-          "require_code": "Require PIN code"
+          "code_mode": "PIN code"
         }
+      }
+    }
+  },
+  "selector": {
+    "code_mode": {
+      "options": {
+        "disarm": "PIN only to disarm (default)",
+        "arm_disarm": "PIN to arm and disarm",
+        "none": "Never ask for PIN"
       }
     }
   },
@@ -102,6 +111,9 @@
     },
     "wrong_password": {
       "message": "Wrong password"
+    },
+    "code_required": {
+      "message": "PIN code is required"
     },
     "not_proxied": {
       "message": "Not connected through proxy"

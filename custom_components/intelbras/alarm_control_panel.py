@@ -13,7 +13,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .config_flow import CONF_REQUIRE_CODE
+from .config_flow import CODE_MODE_ARM_DISARM, CODE_MODE_NONE, get_code_mode
 from .const import DOMAIN
 from .coordinator import AMTCoordinator
 from .protocol import OpenZoneError, WrongPasswordError
@@ -43,9 +43,11 @@ class AMTAlarm(CoordinatorEntity[AMTCoordinator], AlarmControlPanelEntity):  # p
         self._apply_state()
 
     def _apply_state(self) -> None:
-        require_code = self._config_entry.options.get(CONF_REQUIRE_CODE, True)
-        self._attr_code_format = CodeFormat.NUMBER if require_code else None
-        self._attr_code_arm_required = require_code
+        code_mode = get_code_mode(self._config_entry.options)
+        self._attr_code_format = (
+            None if code_mode == CODE_MODE_NONE else CodeFormat.NUMBER
+        )
+        self._attr_code_arm_required = code_mode == CODE_MODE_ARM_DISARM
 
         status = self.coordinator.data["status"]
         stay = any(zone["enabled"] and zone["stay"] for zone in status["zones"])
@@ -66,17 +68,23 @@ class AMTAlarm(CoordinatorEntity[AMTCoordinator], AlarmControlPanelEntity):  # p
         else:
             self._attr_alarm_state = AlarmControlPanelState.DISARMED
 
-    def _resolve_code(self, code: str | None) -> str:
+    def _resolve_code(self, code: str | None, disarm: bool = False) -> str:
         """Resolve the PIN code, falling back to stored PIN if not required."""
         if code:
             return code
-        if not self._config_entry.options.get(CONF_REQUIRE_CODE, True):
+        code_mode = get_code_mode(self._config_entry.options)
+        if code_mode == CODE_MODE_NONE or (
+            not disarm and code_mode != CODE_MODE_ARM_DISARM
+        ):
             return self._config_entry.data[CONF_PIN]
-        raise ValueError("Code is required")
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="code_required",
+        )
 
     async def async_alarm_disarm(self, code: str | None = None) -> None:
         try:
-            await self.coordinator.client.disarm(self._resolve_code(code))
+            await self.coordinator.client.disarm(self._resolve_code(code, disarm=True))
         except WrongPasswordError:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
