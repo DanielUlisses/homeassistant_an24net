@@ -93,13 +93,9 @@ class AMTCoordinator(DataUpdateCoordinator[Data]):
         zone = event["zone"]
 
         if event_type == "arm":
-            # CID 3401 is sent for both full and stay arm, so it can't tell
-            # armed_away from armed_home. Both modes set partition B; only a
-            # full arm also sets A. Set B optimistically and let the next
-            # status poll (requested below) fill in A. Forcing A here made
-            # stay arm show as armed_away.
+            # CID 3401 is only sent for a full arm (partial arm is 3456).
+            status["partitionAArmed"] = True
             status["partitionBArmed"] = True
-            self.hass.async_create_task(self.async_request_refresh())
         elif event_type == "arm_stay":
             status["partitionAArmed"] = False
             status["partitionBArmed"] = True
