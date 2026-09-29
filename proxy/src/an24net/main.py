@@ -68,6 +68,67 @@ OPEN_CONNECTIONS: dict[bytes, AlarmConnection] = {}
 UPSTREAM_HOST = os.environ.get("UPSTREAM_HOST", "amt.intelbras.com.br")
 UPSTREAM_PORT = int(os.environ.get("UPSTREAM_PORT", "9009"))
 
+PASSTHROUGH = os.environ.get("PASSTHROUGH", "1") not in ("0", "false", "no")
+
+
+async def open_upstream(logger: logging.Logger) -> tuple[StreamReader, StreamWriter]:
+    """Connect to the real Intelbras cloud, refusing to connect to ourselves."""
+    u_reader, u_writer = await asyncio.open_connection(
+        host=UPSTREAM_HOST,
+        port=UPSTREAM_PORT,
+    )
+    upstream_ip = u_writer.get_extra_info("peername")[0]
+    local_ips = {u_writer.get_extra_info("sockname")[0], "127.0.0.1", "::1"}
+    if upstream_ip in local_ips:
+        u_writer.close()
+        raise ConnectionError(
+            f"{UPSTREAM_HOST} resolved to this proxy ({upstream_ip}); "
+            "the proxy host must not use the DNS override"
+        )
+    logger.info(f"connected to {UPSTREAM_HOST}:{UPSTREAM_PORT} ({upstream_ip})")
+    return u_reader, u_writer
+
+
+def mask_password(frame: bytes) -> bytes:
+    """Replace the ASCII password digits of a MY_HOME frame with '*' (0x2a).
+
+    Password-framed requests look like [len] E9 21 <digits> <cmd...> 21 [ck];
+    the password is the run of ASCII digits right after the first 0x21.
+    """
+    if len(frame) < 4 or frame[1] != MY_HOME or frame[2] != 0x21:
+        return frame
+    out = bytearray(frame)
+    i = 3
+    while i < len(out) - 1 and 0x30 <= out[i] <= 0x39:
+        out[i] = 0x2A
+        i += 1
+    return bytes(out)
+
+
+def describe_chunk(chunk: bytes) -> str:
+    """Best-effort decode of raw bytes into frames for logging (never raises)."""
+    parts: list[str] = []
+    i = 0
+    while i < len(chunk):
+        b = chunk[i]
+        if b in (PING_COMMAND, OK):
+            parts.append("PING" if b == PING_COMMAND else "OK")
+            i += 1
+            continue
+        end = i + b + 2
+        if b == 0 or end > len(chunk):
+            parts.append(f"raw {mask_password(chunk[i:]).hex(':')}")
+            break
+        frame = mask_password(chunk[i:end])
+        try:
+            desc = command_to_str(frame[1], frame[2:-1])
+        except Exception:
+            desc = "?"
+        parts.append(f"{desc} | {frame.hex(':')}")
+        i = end
+    return " || ".join(parts)
+
+
 # The panel pings every ~60s; drop the connection if it goes silent for longer.
 ALARM_IDLE_TIMEOUT = 180
 _conn_ids = count(1)
@@ -84,12 +145,58 @@ async def handle(
 
     async with TaskGroup() as tg:
 
+        async def __passthrough(logger: logging.Logger, data: bytes) -> None:
+            """Relay a client whose panel isn't connected here to the real cloud.
+
+            The client was told "no encryption"; the cloud picks its own XOR key,
+            which only applies to the CONNECTION frame. After the handshake the
+            bytes are piped unchanged and logged (passwords masked).
+            """
+            logger = logger.getChild("passthrough")
+            try:
+                u_reader, u_writer = await open_upstream(logger)
+            except Exception as ex:
+                logger.warning(f"upstream unavailable ({ex}) → CONN_NOT_FOUND")
+                writer.write(bytes([CONN_NOT_FOUND]))
+                await writer.drain()
+                return
+            try:
+                await send_command(u_writer, XOR_COMMAND)
+                key, _ = await read_command(u_reader)
+                logger.info(f"cloud XOR key {key:02x}")
+                await send_command(u_writer, CONNECTION_COMMAND, data, key)
+                result = await u_reader.readexactly(1)
+                if result[0] == CONN_SUCCESS:
+                    result += await u_reader.readexactly(1)
+                logger.info(f"cloud CONNECTION result {result.hex(':')}")
+                writer.write(result)
+                await writer.drain()
+                if result[0] != CONN_SUCCESS:
+                    return
+
+                async def pipe(
+                    src: StreamReader, dst: StreamWriter, arrow: str
+                ) -> None:
+                    while chunk := await src.read(4096):
+                        logger.info(f"{arrow} {describe_chunk(chunk)}")
+                        dst.write(chunk)
+                        await dst.drain()
+                    raise ConnectionError(f"{arrow} side closed")
+
+                async with asyncio.TaskGroup() as ptg:
+                    ptg.create_task(pipe(reader, u_writer, "app→cloud ↓"))
+                    ptg.create_task(pipe(u_reader, writer, "cloud→app ↑"))
+            finally:
+                u_writer.close()
+
         async def __downstream_client(data: bytes) -> None:
             mac = data[9:15]
             logger = _logger.getChild(f"client[{mac.hex(':')}]")
             alarm = OPEN_CONNECTIONS.get(mac, None)
             if not alarm:
                 logger.info(f"← CONNECTION: mac={mac.hex(':')}")
+                if PASSTHROUGH:
+                    return await __passthrough(logger, data)
                 logger.warning(f"→ CONN_NOT_FOUND | {CONN_NOT_FOUND:02x}")
                 writer.write(bytes([CONN_NOT_FOUND]))
                 await writer.drain()
@@ -252,25 +359,7 @@ async def handle(
 
             while True:
                 try:
-                    u_reader, u_writer = await asyncio.open_connection(
-                        host=UPSTREAM_HOST,
-                        port=UPSTREAM_PORT,
-                    )
-                    upstream_ip = u_writer.get_extra_info("peername")[0]
-                    local_ips = {
-                        u_writer.get_extra_info("sockname")[0],
-                        "127.0.0.1",
-                        "::1",
-                    }
-                    if upstream_ip in local_ips:
-                        u_writer.close()
-                        raise ConnectionError(
-                            f"{UPSTREAM_HOST} resolved to this proxy ({upstream_ip}); "
-                            "the proxy host must not use the DNS override"
-                        )
-                    logger.info(
-                        f"connected to {UPSTREAM_HOST}:{UPSTREAM_PORT} ({upstream_ip})"
-                    )
+                    u_reader, u_writer = await open_upstream(logger)
 
                     start_data = b"\x45\x12\x12\x52\x57\x19"
                     logger.info(f"→ START | {frame_hex(START_COMMAND, start_data)}")
