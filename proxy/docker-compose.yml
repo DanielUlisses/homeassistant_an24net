@@ -5,6 +5,11 @@ services:
       dockerfile: proxy/Dockerfile
     ports:
       - 9009:9009
+    # Resolve the real Intelbras cloud even if this host (or the whole LAN)
+    # uses the DNS override below; otherwise the proxy would connect to itself.
+    dns:
+      - ${UPSTREAM_DNS:-1.1.1.1}
+      - ${UPSTREAM_DNS2:-8.8.8.8}
     restart: unless-stopped
 
   # Optional DNS redirect for routers without outbound DNAT.

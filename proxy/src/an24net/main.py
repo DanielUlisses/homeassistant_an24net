@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import signal
 import sys
 from asyncio import StreamReader, StreamWriter, Task, TaskGroup
@@ -63,6 +64,9 @@ class AlarmConnection:
 
 
 OPEN_CONNECTIONS: dict[bytes, AlarmConnection] = {}
+
+UPSTREAM_HOST = os.environ.get("UPSTREAM_HOST", "amt.intelbras.com.br")
+UPSTREAM_PORT = int(os.environ.get("UPSTREAM_PORT", "9009"))
 
 # The panel pings every ~60s; drop the connection if it goes silent for longer.
 ALARM_IDLE_TIMEOUT = 180
@@ -249,10 +253,24 @@ async def handle(
             while True:
                 try:
                     u_reader, u_writer = await asyncio.open_connection(
-                        host="amt.intelbras.com.br",
-                        port=9009,
+                        host=UPSTREAM_HOST,
+                        port=UPSTREAM_PORT,
                     )
-                    logger.info("connected to amt.intelbras.com.br:9009")
+                    upstream_ip = u_writer.get_extra_info("peername")[0]
+                    local_ips = {
+                        u_writer.get_extra_info("sockname")[0],
+                        "127.0.0.1",
+                        "::1",
+                    }
+                    if upstream_ip in local_ips:
+                        u_writer.close()
+                        raise ConnectionError(
+                            f"{UPSTREAM_HOST} resolved to this proxy ({upstream_ip}); "
+                            "the proxy host must not use the DNS override"
+                        )
+                    logger.info(
+                        f"connected to {UPSTREAM_HOST}:{UPSTREAM_PORT} ({upstream_ip})"
+                    )
 
                     start_data = b"\x45\x12\x12\x52\x57\x19"
                     logger.info(f"→ START | {frame_hex(START_COMMAND, start_data)}")
