@@ -6,3 +6,28 @@ services:
     ports:
       - 9009:9009
     restart: unless-stopped
+
+  # Optional DNS redirect for routers without outbound DNAT.
+  # Answers amt.intelbras.com.br with this host's IP and forwards every
+  # other query upstream. Point ONLY the alarm panel's DNS 1 (programming
+  # address 274) at this host; the host itself must keep its normal DNS,
+  # otherwise the proxy's upstream connection would loop back to itself.
+  #
+  #   PROXY_IP=192.168.1.50 docker compose --profile dns up -d
+  #   docker compose logs -f dns   # shows the panel's DNS queries
+  dns:
+    profiles: [dns]
+    image: alpine:3.20
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        apk add --no-cache dnsmasq >/dev/null &&
+        exec dnsmasq --keep-in-foreground --log-queries --log-facility=-
+        --no-resolv --no-hosts
+        --server=${UPSTREAM_DNS:-1.1.1.1} --server=${UPSTREAM_DNS2:-8.8.8.8}
+        --address=/amt.intelbras.com.br/${PROXY_IP:?set PROXY_IP to the LAN IP of this host}
+    ports:
+      # Bound to the LAN IP so it doesn't clash with systemd-resolved on 127.0.0.53.
+      - ${PROXY_IP}:53:53/udp
+      - ${PROXY_IP}:53:53/tcp
+    restart: unless-stopped

@@ -91,6 +91,24 @@ Replace the placeholders:
 - `<PROXY_SERVER_IP>` — IP of the machine running the proxy
 - `<ALARM_PANEL_MAC>` — your alarm panel's MAC address
 
+### Alternative: DNS redirect (no router access)
+
+If your router can't redirect outbound traffic, point the alarm panel's DNS at a
+small dnsmasq bundled in the compose file. It answers `amt.intelbras.com.br` with
+the proxy host's IP and forwards everything else:
+
+```bash
+cd proxy
+PROXY_IP=<PROXY_SERVER_IP> docker compose --profile dns up -d
+docker compose logs -f dns server
+```
+
+Then set the panel's **DNS 1** (programming address 274) to `<PROXY_SERVER_IP>`.
+If the panel ignores it while DHCP is on, disable DHCP (270) and set a fixed IP,
+gateway and mask (271–273). Power-cycle the panel so it reconnects. The `dns` log
+should show a query for `amt.intelbras.com.br`, then the `server` log shows the
+panel connecting. Keep the proxy host itself on its normal DNS.
+
 ## Requirements
 
 - Home Assistant 2024.1+
