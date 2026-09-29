@@ -497,6 +497,7 @@ CID_EVENT_TYPES: dict[tuple[int, int], str] = {
     (1, 401): "disarm",
     (3, 401): "arm",
     (3, 441): "arm_stay",
+    (3, 456): "arm_stay",  # partial arm, as logged by the ANM 24 Net
     (1, 422): "pgm_activate",
     (3, 422): "pgm_deactivate",
 }
@@ -516,6 +517,7 @@ SYSTEM_EVENT_TYPES = [
     "system_battery_low",
     "system_battery_restore",
     "arm",
+    "arm_stay",
     "disarm",
 ]
 
